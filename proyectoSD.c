@@ -22,13 +22,16 @@ int main(int argc, char *argv[])
 {
 
     int prn, pid, splitSize, rest, value, nDias, nMedidas, salto, j;
-    char buff[1000]; 
+    char *buff = (char *)malloc(1000 * sizeof(char));  // asignamos memoria
     MPI_File fh;
     char archivo[] = "datos_1x.txt";
     char *datos;
     MPI_Offset offset;
     float mejoresDistancias[2];
     double t1, t2, tiempo = 0;
+    float media[splitSize][NMEDIDAS];
+    float error[splitSize];
+    float MAPE_global;
 
     MPI_Init(&argc, &argv);
 
@@ -65,9 +68,59 @@ int main(int argc, char *argv[])
     if (pid == 0)
     {
         t2 = clock();
-        tiempo = (double) t2 - t1;
-        printf("Tiempo: %f\n", tiempo/CLOCKS_PER_SEC);
+        tiempo = (double)(t2 - t1) / CLOCKS_PER_SEC;
+        printf("Tiempo: %f\n", tiempo);
     }
+
+    // Cada proceso MPI guarda sus resultados localmente
+    // (asumimos que cada proceso contribuye a los tres ficheros de salida)
+    FILE *prediccionesFile;
+    FILE *mapeFile;
+    FILE *tiempoFile;
+
+    if (pid == 0)
+    {
+        prediccionesFile = fopen("Predicciones.txt", "w");
+        mapeFile = fopen("MAPE.txt", "w");
+        tiempoFile = fopen("Tiempo.txt", "w");
+    }
+    else
+    {
+        prediccionesFile = fopen("Predicciones.txt", "a");
+        mapeFile = fopen("MAPE.txt", "a");
+        tiempoFile = fopen("Tiempo.txt", "a");
+    }
+
+    // Llamada a la función hazProblema que ahora devuelve media y error
+    hazProblema(splitSize, rest, nMedidas, nDias, pid, prn, archivo);
+
+    // Cada proceso MPI escribe sus resultados en los ficheros
+    for (int i = 0; i < splitSize; i++)
+    {
+        // Escribir predicciones en Predicciones.txt
+        for (int j = 0; j < nMedidas; j++)
+        {
+            fprintf(prediccionesFile, "%.1f ", media[i][j]);
+        }
+        fprintf(prediccionesFile, "\n");
+
+        // Escribir MAPE en MAPE.txt
+        fprintf(mapeFile, "%.1f\n", error[i]);
+    }
+
+    // El proceso 0 escribe el tiempo y otros detalles en Tiempo.txt
+    if (pid == 0)
+    {
+        fprintf(tiempoFile, "Tiempo de ejecución: %f segundos\n", tiempo);
+        fprintf(tiempoFile, "Archivo procesado: %s\n", archivo);
+        fprintf(tiempoFile, "MAPE del conjunto de datos completo: %.1f\n", MAPE_global); // Calcula esto según tu lógica
+        fprintf(tiempoFile, "Número de procesos MPI utilizados: %d\n", prn);
+    }
+
+    // Cerrar los ficheros
+    fclose(prediccionesFile);
+    fclose(mapeFile);
+    fclose(tiempoFile);
 
     MPI_Finalize();
 }
@@ -184,18 +237,18 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
         }
     }
 
-    //TODO: Hacer las cuentas para el resto
+    // TODO: Hacer las cuentas para el resto
 
     for (int i = 0; i < splitSize; i++)
     {
         calcularMedia(media[i], diasMejores[i][0], diasMejores[i][1], nMedidas);
-     //   printf("Mejor Distancia de %d: %.1f\n", pid * splitSize + i, mejoresDistancias[i][0]);
+        //   printf("Mejor Distancia de %d: %.1f\n", pid * splitSize + i, mejoresDistancias[i][0]);
     }
 
     for (int i = 0; i < splitSize; i++)
     {
         error[i] = calcularMAPE(media[i], datos[i], nMedidas, pid);
-       // printf("[%d] Error de %d: %.1f\n", pid, pid * splitSize + i, error[i]);
+        // printf("[%d] Error de %d: %.1f\n", pid, pid * splitSize + i, error[i]);
     }
 
     MPI_File_close(&fh);
@@ -203,7 +256,7 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
 
 float calcularDistancia(float dia1[], float dia2[], int nMedidas)
 {
-    float result = 0;
+     float result = 0;
     int i;
 
     // #pragma omp parallel for private(i) reduction(+:result)
