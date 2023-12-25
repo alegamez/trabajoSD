@@ -32,7 +32,9 @@ Queremos asegurarnos de que nuestras predicciones sean precisas. Utilizaremos la
 
 ### Fórmula MAPE
 
-\[ MAPE (\%) = \frac{100}{h} \sum_{n=1}^{h} \frac{|R_n - P_n|}{|R_n|} \]
+$$
+MAPE = \frac{1}{n} \sum_{i=1}^n \left| \frac{A_i - F_i}{A_i} \right| \times 100
+$$
 
 
 ## Contacto
