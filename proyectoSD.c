@@ -16,7 +16,8 @@ void calcularMedia(float media[], float dia1[], float dia2[], int nMedidas);
 void imprimirVector(float v[], int size);
 float calcularMAPE(float real[], float prediccion[], int h, int pid);
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
 
     int prn; // Numero de procesos
     int pid; // Identificador del proceso
@@ -37,7 +38,6 @@ int main(int argc, char *argv[]){
     double tiempo = 0; // Tiempo total de ejecucion (t2-t1)
     float media[splitSize][NMEDIDAS]; // Media generada para cada prediccion en el codigo
     float error[splitSize]; // Almacenar los errores asociados a cada prediccion. Hay un error apra cada conjunto de datos
-    float MAPE_global; // Almacena el error error global del conjunto de datos completo. Evalua la precision de un modelo de prediccion
 
     MPI_Init(&argc, &argv);
 
@@ -154,10 +154,8 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
     float distancia;
     // Mejores distancias para cada medida 
     float mejoresDistancias[splitSize][2];
-    float mejoresDistanciasResto[rest][2];
     // Datos asociados a las mejores distancias 
     float diasMejores[splitSize][2][nMedidas];
-    float diasMejoresResto[rest][2][nMedidas];
 
     // Media generada para cada prediccion
     float media[splitSize][nMedidas];
