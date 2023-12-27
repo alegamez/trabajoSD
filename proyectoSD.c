@@ -7,7 +7,7 @@
 
 #define NMEDIDAS 24 //Cantidad de medidas o dimensiones de los datos en el problema
 #define MASTERPID 0
-void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int prn, char *archivo);
+void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int prn, char *archivo, int nDiasAComparar);
 float calcularDistancia(float dia1[], float dia2[], int nMedidas);
 void copiarDias(float destino[], float origen[], int nMedidas);
 void sustituirPrimero(float diaMejor[][NMEDIDAS], float diaActual[], float mejorDistancia[], float distancia, int nDias);
@@ -38,6 +38,7 @@ int main(int argc, char *argv[])
     double tiempo = 0; // Tiempo total de ejecucion (t2-t1)
     float media[splitSize][NMEDIDAS]; // Media generada para cada prediccion en el codigo
     float error[splitSize]; // Almacenar los errores asociados a cada prediccion. Hay un error apra cada conjunto de datos
+    int nDiasAComparar=1001; //Solo tengo que comparar los 1001 ultimos dias
 
     MPI_Init(&argc, &argv);
 
@@ -62,8 +63,8 @@ int main(int argc, char *argv[])
     nMedidas = atoi(datos); // Convierto en un entero el valor anterior
 
     // Calcula numero de dias para cada proceso
-    splitSize = 1001 / prn;
-    rest = 1001 % prn;
+    splitSize = nDiasAComparar / prn;
+    rest = nDiasAComparar % prn;
 
     printf("[%d] Dias: %d, Horas: %d\n", pid, nDias, nMedidas);
     MPI_File_close(&fh); // Cierro el archivo porque ya he leido todo su contenido
@@ -144,7 +145,7 @@ int main(int argc, char *argv[])
 //pid --> Identificador el proceso que realiza el calculo
 //prn --> Numero de procesos
 //*archivo --> Nombre del archivo que contiene los datos a procesar 
-void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int prn, char *archivo){
+void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int prn, char *archivo, int nDiasAComparar){
     // Almacena los valores a los que se les busca el knn
     float datos[splitSize][nMedidas];
     float resto[rest][nMedidas];
@@ -174,14 +175,14 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
     // #pragma omp parallel for private(salto, tam, tid, aux, j) firstprivate(h)
     for (i = pid * splitSize; i < pid * splitSize + splitSize; i++){
         if (i < 999){
-            salto = -(192 * 2 + 193 * (1001 - i - 2));
+            salto = -(192 * 2 + 193 * (nDiasAComparar - i - 2));
             tam = 191;
         }else if (i == 999){
             tam = 192;
-            salto = -(192 * (1001 - i));
+            salto = -(192 * (nDiasAComparar - i));
         }else{
             tam = 191;
-            salto = -(192 * (1001 - i) - 1);
+            salto = -(192 * (nDiasAComparar - i) - 1);
         }
         MPI_File_seek(fh, salto, MPI_SEEK_END); //Posiciona el puntero del archivo(fh) en la posicion relativa al final en funcion del salto (Leo datos desde el final)
         MPI_File_read(fh, buff, tam, MPI_CHAR, NULL); //Leo tam caracteres desde la posicion del puntero y los guardo en buff
@@ -198,9 +199,9 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
     }
 
     // Configura la vista del archivo para omitir la cabecera
-    MPI_File_set_view(fh, num, MPI_CHAR, MPI_CHAR, "native", MPI_INFO_NULL);
+    MPI_File_set_view(fh, offset, MPI_CHAR, MPI_CHAR, "native", MPI_INFO_NULL);
     //fh --> Archivo
-    //num --> Posicion en la que se empieza a leer
+    //offset --> Lugar desde donde empezar a leer
     //native --> tipo de datos del archivo es el nativo de la maquina
 
     
