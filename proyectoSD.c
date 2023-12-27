@@ -16,8 +16,7 @@ void calcularMedia(float media[], float dia1[], float dia2[], int nMedidas);
 void imprimirVector(float v[], int size);
 float calcularMAPE(float real[], float prediccion[], int h, int pid);
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]){
 
     int prn; // Numero de procesos
     int pid; // Identificador del proceso
@@ -137,18 +136,26 @@ int main(int argc, char *argv[])
     MPI_Finalize();
 }
 
+//Realiza calculos distribuidos entre varios procesos
+//splitSize --> tamaño del fragmento
+//rest
+//nMedias --> Numero de medidas del archivo
+//nDias --> Numero total de dias
+//pid --> Identificador el proceso que realiza el calculo
+//prn --> Numero de procesos
+//*archivo --> Nombre del archivo que contiene los datos a procesar 
 void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int prn, char *archivo){
-    // Almacena los 1001 valores a los que se les busca el knn
+    // Almacena los valores a los que se les busca el knn
     float datos[splitSize][nMedidas];
     float resto[rest][nMedidas];
     // Dia que se esta procesando de todo el archivo
     float diaActual[nMedidas];
     // Distancia euclidea calculada
     float distancia;
-    // Mejores distancias para cada medida de las 1001
+    // Mejores distancias para cada medida 
     float mejoresDistancias[splitSize][2];
     float mejoresDistanciasResto[rest][2];
-    // Datos asociados a las mejores distancias de las 1001
+    // Datos asociados a las mejores distancias 
     float diasMejores[splitSize][2][nMedidas];
     float diasMejoresResto[rest][2][nMedidas];
 
@@ -156,16 +163,16 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
     float media[splitSize][nMedidas];
     float error[splitSize];
 
-    // Buffer usado
-    char *buff;
+    char *buff; //Almacen temporal de los datos leidos del archivo
     char *aux;
     int i, j, h, salto, tam;
-    MPI_File fh;
+    MPI_File fh; //Manejo del archivo
 
+    // Apertura del archivo en lectura
     MPI_File_open(MPI_COMM_WORLD, archivo, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
 
-    // Lee los 1001 dias finales
-    h = 0;
+    // Lee los dias del archivo en paralelo, cada proceso lee una porcion del archivo y alamacena en datos
+    h = 0; //Indice para lamacenar los datos leidos en datos
     // #pragma omp parallel for private(salto, tam, tid, aux, j) firstprivate(h)
     for (i = pid * splitSize; i < pid * splitSize + splitSize; i++){
         if (i < 999){
@@ -178,33 +185,37 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
             tam = 191;
             salto = -(192 * (1001 - i) - 1);
         }
-        MPI_File_seek(fh, salto, MPI_SEEK_END);
-        MPI_File_read(fh, buff, tam, MPI_CHAR, NULL);
+        MPI_File_seek(fh, salto, MPI_SEEK_END); //Posiciona el puntero del archivo(fh) en la posicion relativa al final en funcion del salto (Leo datos desde el final)
+        MPI_File_read(fh, buff, tam, MPI_CHAR, NULL); //Leo tam caracteres desde la posicion del puntero y los guardo en buff
         j = 0;
-        aux = strtok(buff, ",");
-        while (aux != NULL){
+        aux = strtok(buff, ","); //Divido los datos leidos que estan separados por ,
+        //Convierte cada parte de la cadena anterior a flotante (atof) y lo guardo en datos
+        while (aux != NULL){ 
             datos[h][j] = atof(aux);
             aux = strtok(NULL, ",");
             j++;
         }
-        h++;
+        h++; // Siguiente fila de la matriz (siguiente fila del archivo)
         // printf("\n");
     }
 
-    // 1. Hace que la vista del fichero se salte la cabecera
+    // Configura la vista del archivo para omitir la cabecera
     MPI_File_set_view(fh, num, MPI_CHAR, MPI_CHAR, "native", MPI_INFO_NULL);
-    // 2. lectura de 192 caracteres hasta la línea nDias - 1001
-    // i representa el numero del dia que se lee (desde 0 hasta el dia anterior al correspondiente)
+    //fh --> Archivo
+    //num --> Posicion en la que se empieza a leer
+    //native --> tipo de datos del archivo es el nativo de la maquina
 
+    
+    // Itera sobre los dias a leer
     for (i = 0; i < nDias - (splitSize * prn - pid * splitSize + rest); i++){
         // Se lee cada dia y se hace la distancia euclidea con los dias leidos
         MPI_File_read(fh, buff, 191, MPI_CHAR, NULL);
         // j controla el vector del dia que se esta leyendo
         j = 0;
-        aux = strtok(buff, ",");
-        while (aux != NULL){
+        aux = strtok(buff, ","); //Divide la cadena leida por , (cada dato)
+        while (aux != NULL){ // itera sobre todos los datos obtenidos y los convierte en flotante y almacena en diaActual
             diaActual[j] = atof(aux);
-            aux = strtok(NULL, ",");
+            aux = strtok(NULL, ","); //Obtener el siguiente elemento de una cadena despues del que ya he leido (para que empiece en la posicion donde se quedó)
             j++;
         }
 
@@ -214,14 +225,14 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
         for (int m = 0; m < splitSize; m++){
             distancia = calcularDistancia(datos[m], diaActual, nMedidas);
 
+            //Si es la primera iteracion, inicializando las mejores distancias y vectores asociados
             if (i == 0){
                 // Inicializamos la primera y segunda mejores medidas al primer valor
                 copiarDias(diasMejores[m][0], diaActual, nMedidas);
                 mejoresDistancias[m][0] = distancia;
                 copiarDias(diasMejores[m][1], diaActual, nMedidas);
                 mejoresDistancias[m][1] = distancia;
-            }else{
-
+            }else{ // Se actualizan los vectores anteriores si se encuentran mejores distancias
                 // printf("\nDistancia calculada: %f < %f < %f ?\n", distancia, mejoresDistancias[m][0], mejoresDistancias[m][1]);
                 if (distancia < mejoresDistancias[m][0]){
                     sustituirPrimero(diasMejores[m], diaActual, mejoresDistancias[m], distancia, nMedidas);
@@ -232,55 +243,113 @@ void hazProblema(int splitSize, int rest, int nMedidas, int nDias, int pid, int 
         }
     }
 
-    // TODO: Hacer las cuentas para el resto
+    if(pid === MASTERPID){
+        //LO QUE HE AÑADIDO
+        //Bucle que itera sobre el resto de dias, sobre los que  no se han procesado anteriormente
+        for(i=nDias-(splitSize*prn-pid*splitSize+rest); i<nDias; i++){
+            MPI_File_read(fh, buff, 191, MPI_CHAR, NULL);
 
-    for (int i = 0; i < splitSize; i++){
-        calcularMedia(media[i], diasMejores[i][0], diasMejores[i][1], nMedidas);
-        //   printf("Mejor Distancia de %d: %.1f\n", pid * splitSize + i, mejoresDistancias[i][0]);
+            j=0;
+            aux = strtok(buff, ",");
+            while(aux != NULL){
+                diaActual[j] = atof(aux);
+                aux = strtok(NULL, ",");
+                j++;
+            }
+
+            //Calculo de la distancias euclideas para el resto
+            for(int m=0; m<rest; m++){
+                distancia = calcularDistancia(resto[m], diaActual, nMedidas);
+                //Si es la primera iteracion, inicializando las mejores distancias y vectores asociados
+                if (i == 0){
+                    // Inicializamos la primera y segunda mejores medidas al primer valor
+                    copiarDias(diasMejores[m][0], diaActual, nMedidas);
+                    mejoresDistancias[m][0] = distancia;
+                    copiarDias(diasMejores[m][1], diaActual, nMedidas);
+                    mejoresDistancias[m][1] = distancia;
+                }else{ // Se actualizan los vectores anteriores si se encuentran mejores distancias
+                    // printf("\nDistancia calculada: %f < %f < %f ?\n", distancia, mejoresDistancias[m][0], mejoresDistancias[m][1]);
+                    if (distancia < mejoresDistancias[m][0]){
+                        sustituirPrimero(diasMejores[m], diaActual, mejoresDistancias[m], distancia, nMedidas);
+                    }else if (distancia < mejoresDistancias[m][1]){
+                        sustituirSegundo(diasMejores[m], diaActual, mejoresDistancias[m], distancia, nMedidas);
+                    }
+                }
+            }
+        }
+
+
+        //Itera sobre las medias para calcular los vectores asociados a los mejore distancias
+        for (int i = 0; i < splitSize; i++){
+            calcularMedia(media[i], diasMejores[i][0], diasMejores[i][1], nMedidas);
+            //   printf("Mejor Distancia de %d: %.1f\n", pid * splitSize + i, mejoresDistancias[i][0]);
+        }
+
+        //Itera sobre las medidas para caclular el error entre la media calculada y los datos reales
+        for (int i = 0; i < splitSize; i++){
+            error[i] = calcularMAPE(media[i], datos[i], nMedidas, pid);
+            // printf("[%d] Error de %d: %.1f\n", pid, pid * splitSize + i, error[i]);
+        }
+
     }
-
-    for (int i = 0; i < splitSize; i++){
-        error[i] = calcularMAPE(media[i], datos[i], nMedidas, pid);
-        // printf("[%d] Error de %d: %.1f\n", pid, pid * splitSize + i, error[i]);
-    }
-
+    //Cierra el archivo
     MPI_File_close(&fh);
 }
 
+//Calcula la distancia euclidiana entre dos vectores
+//dia1 --> datos de un dia
+//dia2 --> datos de otro dia
+//nmedidas --> Numero total de medidas
 float calcularDistancia(float dia1[], float dia2[], int nMedidas){
-     float result = 0;
+    float result = 0;
     int i;
 
     // #pragma omp parallel for private(i) reduction(+:result)
     for (i = 0; i < nMedidas; i++){
+        //Formula de la distancia
         result += pow(dia1[i] - dia2[i], 2);
     }
     return sqrt(result);
 }
 
+//Actualiza el primer vector y su distancia si se encuentra una distancia menor
+//diaMejor --> Matriz con los dos mejores vectores
+//diaActual --> vector numero que comparo para ver si es mejor
+//mejorDistancia --> Vector con las dos mejores distancias
+//distancia --> Nueva distancia a comparar para ver si es mejor
+//nDias --> Numero de elementos que tienen los vectores
 void sustituirPrimero(float diaMejor[][NMEDIDAS], float diaActual[], float mejorDistancia[], float distancia, int nDias){
     sustituirSegundo(diaMejor, diaMejor[0], mejorDistancia, mejorDistancia[0], nDias);
     mejorDistancia[0] = distancia;
     copiarDias(diaMejor[0], diaActual, nDias);
 }
 
+//Actualiza el segundo vector y su distancia asociada si hay una distancia menor
+//diaMejor --> Matriz con los dos mejores vectores
+//diaActual --> vector numero que comparo para ver si es mejor
+//mejorDistancia --> Vector con las dos mejores distancias
+//distancia --> Nueva distancia a comparar para ver si es mejor
+//nDias --> Numero de elementos que tienen los vectores
 void sustituirSegundo(float diaMejor[][NMEDIDAS], float diaActual[], float mejorDistancia[], float distancia, int nDias){
     mejorDistancia[1] = distancia;
     copiarDias(diaMejor[1], diaActual, nDias);
 }
 
+//Media enre los elementos de dos vectores
 void calcularMedia(float media[], float dia1[], float dia2[], int nMedidas){
     for (int i = 0; i < nMedidas; i++){
         media[i] = (dia1[i] + dia2[i]) / 2;
     }
 }
 
+//Copia los elementos de un vector a otro
 void copiarDias(float destino[], float origen[], int nMedidas){
     for (int i = 0; i < nMedidas; i++){
         destino[i] = origen[i];
     }
 }
 
+//Imprime los elementos de un vector
 void imprimirVector(float v[], int size){
     for (int i = 0; i < size; i++){
         printf("%f ", v[i]);
@@ -288,12 +357,18 @@ void imprimirVector(float v[], int size){
     printf("\n");
 }
 
-float calcularMAPE(float real[], float prediccion[], int h, int pid){
+//Calcula el Error Porcentual Absoluto entre dos vectores
+//real --> Vector con los valores reales
+//prediccion --> Vector con los valores predichos
+//h --> Numero de elementos en los vectores
+float calcularMAPE(float real[], float prediccion[], int h){
     float res = 0;
 
+    //Calcula la suma de los errores absoluros y los normaliza para obtener el MAPE
     for (int i = 0; i < h; i++){
         res += (fabs((real[i] - prediccion[i]) / real[i]));
     }
+    //Devuelve el resultado en porcentaje
     res = 100 * res / h;
 
     return res;
